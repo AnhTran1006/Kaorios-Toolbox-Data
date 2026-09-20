@@ -1,0 +1,78 @@
+name: Update Toolbox Data
+
+on:
+  schedule:
+    - cron: "30 17 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download data
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p Toolbox-data
+
+          curl --fail --location --retry 3 --retry-all-errors \
+            "https://raw.githubusercontent.com/hzzmonetvn/Kaorios-Toolbox/main/Toolbox-data/Pif-props.json" \
+            -o Toolbox-data/Pif-props.json
+
+          curl --fail --location --retry 3 --retry-all-errors \
+            "https://keybox.hzzmonet.io.vn/api/download" \
+            -o Toolbox-data/keybox.xml
+
+          curl --fail --location --retry 3 --retry-all-errors \
+            "https://raw.githubusercontent.com/zuri1503/Toolbox-Database/main/app-props.json" \
+            -o Toolbox-data/app-props.json
+
+          curl --fail --location --retry 3 --retry-all-errors \
+            "https://raw.githubusercontent.com/zuri1503/Toolbox-Database/main/device-props.json" \
+            -o Toolbox-data/device-props.json
+
+      - name: Validate data
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          for name in ("Pif-props.json", "app-props.json", "device-props.json"):
+              path = Path("Toolbox-data") / name
+              with path.open("r", encoding="utf-8") as f:
+                  json.load(f)
+              print(f"OK: {path}")
+
+          keybox = Path("Toolbox-data/keybox.xml")
+          if keybox.stat().st_size == 0:
+              raise SystemExit("keybox.xml is empty")
+          print(f"OK: {keybox} ({keybox.stat().st_size} bytes)")
+          PY
+
+      - name: Commit changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add Toolbox-data/
+
+          if git diff --cached --quiet; then
+            echo "No data changes."
+            exit 0
+          fi
+
+          git commit -m "chore(data): update toolbox data"
+          git push
